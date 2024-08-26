@@ -1,0 +1,88 @@
+import numpy as np
+from textblob import TextBlob  # Sentiment analysis and spelling correction library
+from tensorflow.keras.preprocessing.text import Tokenizer
+from tensorflow.keras.preprocessing.sequence import pad_sequences
+from tensorflow.keras.models import Sequential
+from tensorflow.keras.layers import Embedding, LSTM, Dense
+
+# Sample input review strings
+input_reviews = [
+    "The product exceeded my expectations, it's fantastic!",
+    "I'm highly disappointed with this product, it doesn't work as advertised.",
+    "Average product, nothing special.",
+    "This product is a lifesaver, I don't know how I lived without it!",
+    "The user interface is clunky and unintuitive, but the functionality is decent.",
+    "Absolutely awful product, I regret buying it.",
+    "I'm in love with this product, it's a game-changer!",
+    "The design is sleek and modern, but it lacks essential features.",
+    "It took some time to get used to, but now I can't imagine my life without it.",
+    "Not bad, but definitely room for improvement."
+]
+
+# Perform spelling correction and sentiment analysis to automatically generate ratings
+ratings = []
+for review in input_reviews:
+    # Correct spelling and perform sentiment analysis
+    corrected_review = TextBlob(review).correct().raw
+    polarity = TextBlob(corrected_review).sentiment.polarity
+    # Mapping polarity to rating
+    if polarity > 0.5:
+        ratings.append((5, review))  # Very positive
+    elif polarity > 0:
+        ratings.append((4, review))  # Positive
+    elif polarity == 0:
+        ratings.append((3, review))  # Neutral
+    elif polarity >= -0.5:
+        ratings.append((2, review))  # Negative
+    else:
+        ratings.append((1, review))  # Very negative
+
+# Tokenize the input reviews
+tokenizer = Tokenizer()
+tokenizer.fit_on_texts([review for _, review in ratings])
+sequences = tokenizer.texts_to_sequences([review for _, review in ratings])
+
+# Padding sequences to ensure uniform length
+max_length = max([len(seq) for seq in sequences])
+padded_sequences = pad_sequences(sequences, maxlen=max_length, padding='post')
+
+# Define LSTM model
+model = Sequential()
+model.add(Embedding(input_dim=len(tokenizer.word_index) + 1, output_dim=100, input_length=max_length))
+model.add(LSTM(units=128, dropout=0.2, recurrent_dropout=0.2))
+model.add(Dense(units=1, activation='linear'))  # Linear activation for regression task
+
+# Compile the model
+model.compile(loss='mean_squared_error', optimizer='adam')
+
+# Convert ratings to numpy array
+ratings = np.array([rating for rating, _ in ratings], dtype=float)
+
+# Train the model
+model.fit(padded_sequences, ratings, epochs=10, batch_size=1)
+
+# Now, you can use this trained model to predict ratings for new input reviews
+# Example of predicting rating for a new review
+new_review = "this prduct is okaay, not grate but not terible eithr"
+# Correct spelling of the new review and perform prediction
+corrected_new_review = TextBlob(new_review).correct().raw
+new_sequence = tokenizer.texts_to_sequences([corrected_new_review])
+new_padded_sequence = pad_sequences(new_sequence, maxlen=max_length, padding='post')
+predicted_rating = model.predict(new_padded_sequence)
+print("Predicted rating:", predicted_rating[0][0])
+
+best_service = None
+worst_service = None
+best_rating = float('-inf')
+worst_rating = float('inf')
+for i, rating in enumerate(ratings):
+    review = input_reviews[i]
+    if rating > best_rating:
+        best_rating = rating
+        best_service = review
+    if rating < worst_rating:
+        worst_rating = rating
+        worst_service = review
+
+print("Best rated service:", best_service)
+print("Worst rated service:", worst_service)
